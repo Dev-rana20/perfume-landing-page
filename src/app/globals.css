@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-luxury-bg-1: #FFF8F3;
+  --color-luxury-bg-2: #F8E6E8;
+  --color-luxury-bg-3: #F5EBDD;
+  --color-luxury-rose: #C89A6D;
+  --color-luxury-dark: #2B2B2B;
+  --color-luxury-secondary: #6A6A6A;
+  
+  --font-serif: var(--font-cormorant);
+  --font-sans: var(--font-inter);
+}
+
+@layer base {
+  :root {
+    --background: #FFF8F3;
+    --foreground: #2B2B2B;
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+  }
+}
+
+/* Custom Utilities for Luxury Feel */
+@layer utilities {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 8px 32px 0 rgba(200, 154, 109, 0.1);
+  }
+  
+  .glass-nav {
+    background: rgba(255, 248, 243, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  }
+}
