@@ -7,8 +7,10 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * Draws a source image onto canvas with "object-fit: cover; object-position: right center"
- * behaviour, implemented manually so it works on all devices.
+ * Draws an image onto canvas using "object-fit: cover; object-position: right center"
+ * maths — implemented manually so it works correctly on every device and screen size.
+ * sx/sy/sw/sh are the SOURCE crop rectangle (in image pixels).
+ * We never use ctx.scale() so there's no transform state to worry about.
  */
 function drawCoverRight(
   ctx: CanvasRenderingContext2D,
@@ -16,21 +18,23 @@ function drawCoverRight(
   canvasW: number,
   canvasH: number
 ) {
-  const imgW = img.naturalWidth;
-  const imgH = img.naturalHeight;
+  if (!img.complete || img.naturalWidth === 0) return;
 
-  // Scale that fills the canvas completely (cover)
-  const scale = Math.max(canvasW / imgW, canvasH / imgH);
+  const iW = img.naturalWidth;
+  const iH = img.naturalHeight;
 
-  const scaledW = imgW * scale;
-  const scaledH = imgH * scale;
+  // Scale factor needed so the image fully covers the canvas (cover)
+  const scale = Math.max(canvasW / iW, canvasH / iH);
 
-  // Anchor horizontally to the RIGHT, vertically centered
-  const offsetX = canvasW - scaledW; // negative → image overflows left (that's fine)
-  const offsetY = (canvasH - scaledH) / 2;
+  const scaledW = iW * scale;
+  const scaledH = iH * scale;
+
+  // Anchor to RIGHT (x) and CENTER (y)
+  const dx = canvasW - scaledW;   // ≤ 0  — image overflows to the left (intentional)
+  const dy = (canvasH - scaledH) / 2;
 
   ctx.clearRect(0, 0, canvasW, canvasH);
-  ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
+  ctx.drawImage(img, dx, dy, scaledW, scaledH);
 }
 
 export default function CanvasSequence() {
@@ -40,48 +44,58 @@ export default function CanvasSequence() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // ── Track physical canvas dimensions separately from CSS ─────
+    let physW = 0;
+    let physH = 0;
+
+    /**
+     * Resize the canvas backing store to match the physical display pixels.
+     * We do NOT use ctx.scale() — instead we pass physW/physH to drawImage
+     * directly so DPR scaling is baked into the pixel buffer dimensions.
+     */
+    const syncCanvasSize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      physW = Math.round(window.innerWidth * dpr);
+      physH = Math.round(window.innerHeight * dpr);
+      canvas.width = physW;
+      canvas.height = physH;
+      // Keep the CSS size at exactly 100vw × 100vh
+      canvas.style.width = "100vw";
+      canvas.style.height = "100vh";
+    };
+
+    syncCanvasSize();
+
+    // ── Preload all frames ────────────────────────────────────────
     const images: HTMLImageElement[] = [];
     const state = { frame: 0 };
 
-    // ── Resize canvas to match physical display pixels ──────────
-    const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      // CSS size stays 100vw × 100vh
-      canvas.style.width = "100vw";
-      canvas.style.height = "100vh";
-      ctx.scale(dpr, dpr); // so draw calls use CSS px units
-    };
-
-    resizeCanvas();
-
-    // ── Preload frames ───────────────────────────────────────────
     for (let i = 1; i <= totalFrames; i++) {
       const img = new Image();
       img.src = `/frames_png/ezgif-frame-${i.toString().padStart(3, "0")}.png`;
       images.push(img);
     }
 
-    // ── Render helpers ───────────────────────────────────────────
+    // ── Render current frame ─────────────────────────────────────
     const render = () => {
       const idx = Math.min(totalFrames - 1, Math.max(0, Math.round(state.frame)));
       const img = images[idx];
-      if (!img || !img.complete || img.naturalWidth === 0) return;
-
-      // Draw coordinates use CSS px because we ctx.scale(dpr, dpr) above
-      const cssW = window.innerWidth;
-      const cssH = window.innerHeight;
-      drawCoverRight(ctx, img, cssW, cssH);
+      if (img && img.complete && img.naturalWidth > 0) {
+        drawCoverRight(ctx, img, physW, physH);
+      }
     };
 
-    images[0].onload = () => render();
+    // Render frame 0 as soon as it loads (or immediately if cached)
+    if (images[0].complete) {
+      render();
+    } else {
+      images[0].onload = render;
+    }
 
-    // ── GSAP scroll scrub ────────────────────────────────────────
+    // ── GSAP scroll scrub ─────────────────────────────────────────
     const trigger = gsap.to(state, {
       frame: totalFrames - 1,
       snap: "frame",
@@ -95,21 +109,21 @@ export default function CanvasSequence() {
       },
     });
 
-    // ── Resize handler ───────────────────────────────────────────
-    let resizeTimer: ReturnType<typeof setTimeout>;
+    // ── Window resize + orientation change ────────────────────────
+    let resizeRaf: number;
     const handleResize = () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        resizeCanvas();
+      cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        syncCanvasSize();
         render();
-      }, 150);
+      });
     };
+
     window.addEventListener("resize", handleResize);
-    // Also handle orientation change on mobile
     window.addEventListener("orientationchange", handleResize);
 
     return () => {
-      clearTimeout(resizeTimer);
+      cancelAnimationFrame(resizeRaf);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
       trigger.kill();
@@ -119,7 +133,6 @@ export default function CanvasSequence() {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[-1] mix-blend-darken overflow-hidden">
-      {/* Canvas is sized via JS to exactly fill the viewport at device pixel ratio */}
       <canvas ref={canvasRef} style={{ display: "block" }} />
     </div>
   );
