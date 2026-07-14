@@ -1,19 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
+/**
+ * Draws a source image onto canvas with "object-fit: cover; object-position: right center"
+ * behaviour, implemented manually so it works on all devices.
+ */
+function drawCoverRight(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  canvasW: number,
+  canvasH: number
+) {
+  const imgW = img.naturalWidth;
+  const imgH = img.naturalHeight;
+
+  // Scale that fills the canvas completely (cover)
+  const scale = Math.max(canvasW / imgW, canvasH / imgH);
+
+  const scaledW = imgW * scale;
+  const scaledH = imgH * scale;
+
+  // Anchor horizontally to the RIGHT, vertically centered
+  const offsetX = canvasW - scaledW; // negative → image overflows left (that's fine)
+  const offsetY = (canvasH - scaledH) / 2;
+
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
+}
+
 export default function CanvasSequence() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const totalFrames = 300;
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    setIsMobile(window.innerWidth < 768);
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -23,50 +45,44 @@ export default function CanvasSequence() {
     if (!ctx) return;
 
     const images: HTMLImageElement[] = [];
-    const airpods = { frame: 0 };
-    const mobile = window.innerWidth < 768;
+    const state = { frame: 0 };
 
-    // Preload images
+    // ── Resize canvas to match physical display pixels ──────────
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      // CSS size stays 100vw × 100vh
+      canvas.style.width = "100vw";
+      canvas.style.height = "100vh";
+      ctx.scale(dpr, dpr); // so draw calls use CSS px units
+    };
+
+    resizeCanvas();
+
+    // ── Preload frames ───────────────────────────────────────────
     for (let i = 1; i <= totalFrames; i++) {
       const img = new Image();
-      const frameNum = i.toString().padStart(3, "0");
-      img.src = `/frames_png/ezgif-frame-${frameNum}.png`;
+      img.src = `/frames_png/ezgif-frame-${i.toString().padStart(3, "0")}.png`;
       images.push(img);
     }
 
-    const setCanvasSize = () => {
-      if (images[0] && images[0].complete && images[0].naturalWidth > 0) {
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = images[0].naturalWidth * dpr;
-        canvas.height = images[0].naturalHeight * dpr;
-      }
-    };
-
-    // Helper to draw the frame — on mobile, we center-crop to keep the bottle visible
+    // ── Render helpers ───────────────────────────────────────────
     const render = () => {
-      const frameIndex = Math.min(totalFrames - 1, Math.max(0, Math.round(airpods.frame)));
-      const img = images[frameIndex];
+      const idx = Math.min(totalFrames - 1, Math.max(0, Math.round(state.frame)));
+      const img = images[idx];
+      if (!img || !img.complete || img.naturalWidth === 0) return;
 
-      if (img && img.complete && canvas.width > 0) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (mobile) {
-          // On mobile: draw the right 60% of the frame (where the bottle lives)
-          const srcX = img.naturalWidth * 0.35;
-          const srcW = img.naturalWidth * 0.65;
-          ctx.drawImage(img, srcX, 0, srcW, img.naturalHeight, 0, 0, canvas.width, canvas.height);
-        } else {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        }
-      }
+      // Draw coordinates use CSS px because we ctx.scale(dpr, dpr) above
+      const cssW = window.innerWidth;
+      const cssH = window.innerHeight;
+      drawCoverRight(ctx, img, cssW, cssH);
     };
 
-    images[0].onload = () => {
-      setCanvasSize();
-      render();
-    };
+    images[0].onload = () => render();
 
-    const trigger = gsap.to(airpods, {
+    // ── GSAP scroll scrub ────────────────────────────────────────
+    const trigger = gsap.to(state, {
       frame: totalFrames - 1,
       snap: "frame",
       ease: "none",
@@ -79,26 +95,32 @@ export default function CanvasSequence() {
       },
     });
 
+    // ── Resize handler ───────────────────────────────────────────
+    let resizeTimer: ReturnType<typeof setTimeout>;
     const handleResize = () => {
-      setCanvasSize();
-      render();
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeCanvas();
+        render();
+      }, 150);
     };
     window.addEventListener("resize", handleResize);
+    // Also handle orientation change on mobile
+    window.addEventListener("orientationchange", handleResize);
 
     return () => {
+      clearTimeout(resizeTimer);
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
       trigger.kill();
-      ScrollTrigger.getAll().forEach(t => t.kill());
+      ScrollTrigger.getAll().forEach((t) => t.kill());
     };
   }, []);
 
   return (
-    <div className="fixed inset-0 w-full h-full pointer-events-none z-[-1] overflow-hidden mix-blend-darken">
-      <canvas
-        ref={canvasRef}
-        /* On mobile: center the bottle, on desktop: anchor right */
-        className="w-full h-full object-cover md:object-right object-center"
-      />
+    <div className="fixed inset-0 pointer-events-none z-[-1] mix-blend-darken overflow-hidden">
+      {/* Canvas is sized via JS to exactly fill the viewport at device pixel ratio */}
+      <canvas ref={canvasRef} style={{ display: "block" }} />
     </div>
   );
 }
