@@ -7,7 +7,7 @@
   --color-luxury-rose: #C89A6D;
   --color-luxury-dark: #2B2B2B;
   --color-luxury-secondary: #6A6A6A;
-  
+
   --font-serif: var(--font-cormorant);
   --font-sans: var(--font-inter);
 }
@@ -20,33 +20,48 @@
 }
 
 @layer base {
+  html {
+    /* Respect iPhone/Android safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     overflow-x: hidden;
+    /* Prevent momentum scrolling quirks on iOS */
+    -webkit-overflow-scrolling: touch;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-serif);
     font-weight: 400;
   }
+
+  /* Improve tap target sizes on mobile */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
 }
 
-/* Custom Utilities for Luxury Feel */
 @layer utilities {
   .glass-card {
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 8px 32px 0 rgba(200, 154, 109, 0.1);
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px 0 rgba(200, 154, 109, 0.08);
   }
-  
+
   .glass-nav {
-    background: rgba(255, 248, 243, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 248, 243, 0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.4);
   }
 }
